@@ -1,30 +1,27 @@
 ---
-# Integration Test Scenario (ITS) custom resource consumed by Konflux.
-# It tells Konflux which Tekton Pipeline to run for integration tests and
-# passes parameters that the pipeline/task will use to talk to Testing Farm.
-
+# Tekton Pipeline used expects the built-in SNAPSHOT param
+# and a COMPONENT_NAME to extract the right image.
 apiVersion: appstudio.redhat.com/v1beta2
 kind: IntegrationTestScenario
 metadata:
   # Choose a stable, DNS-safe name for the scenario
   name: testing-farm-integration
   # Namespace (tenant workspace) where your app and tests live
-  namespace: <your-tenant-namespace>
+  namespace: my-ns-tenant
   labels:
     # If "true", the ITS is optional and won't block promotions.
     # Keep "false" to make failures block delivery.
     test.appstudio.openshift.io/optional: "false"
 spec:
   # Exact Konflux Application name this scenario belongs to
-  application: <your-konflux-application>
-
+  application: my-app
   # Reference the Tekton Pipeline via the Git resolver. Konflux fetches it
   # from your repository at the specified path/revision.
   resolverRef:
     resolver: git
     params:
       - name: url
-        value: https://github.com/<org>/<repo-tests>.git
+        value: https://github.com/yomismo/repo.git
       - name: revision
         value: main
       - name: pathInRepo
@@ -34,22 +31,22 @@ spec:
   # Parameters forwarded to the Pipeline (and then to the Task).
   # Adjust these to your needs or override per-scenario.
   params:
+    # Exact component name used by Task to extract image ref from SNAPSHOT
+    - name: COMPONENT_NAME
+      value: my-app-component
     # Testing Farm target environment
     - name: TF_COMPOSE
-      value: Fedora-41
+      value: RHEL-9
     - name: TF_ARCH
       value: x86_64
-
     # Repository containing your FMF/tmt metadata and tests
     - name: TF_GIT_URL
-      value: https://github.com/<org>/<repo-tests>.git
+      value: https://github.com/yomismo/repo.git
     - name: TF_GIT_REF
       value: main
-
     # Path to the tmt plan in your repo (defined below)
     - name: TF_PLAN
-      value: /plans/run-root-script
-
+      value: /plans/run-root-image
     # End-to-end timeout for the Testing Farm request, in minutes
     - name: TF_TIMEOUT_MIN
       value: "120"
@@ -59,4 +56,7 @@ spec:
     # and runs with a couple of flags. Extend as needed.
     - name: TF_TMT_ENV
       value: >
-        SCRIPT_PATH=./tests/script.sh SCRIPT_ARGS="--flag1 --flag2" USE_CONTAINER=false PACKAGE_LIST="podman jq"
+        USE_CONTAINER=true
+        # Optional: override CMD/ARGS if the image needs a different entrypoint
+        # CONTAINER_CMD=""
+        # CONTAINER_ARGS=""
