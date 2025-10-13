@@ -1,0 +1,102 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: testing-farm-request
+spec:
+  description: "Lanza una solicitud a Testing Farm usando el CLI y espera hasta completar; falla si no pasa"
+  params:
+    - name: TF_COMPOSE
+      type: string
+    - name: TF_ARCH
+      type: string
+      default: x86_64
+    - name: TF_GIT_URL
+      type: string
+    - name: TF_GIT_REF
+      type: string
+      default: main
+    - name: TF_PLAN
+      type: string
+    - name: TF_TIMEOUT_MIN
+      type: string
+      default: "120"
+    - name: TF_TMT_ENV
+      type: string
+      default: ""
+  steps:
+    - name: request-and-wait
+      image: quay.io/testing-farm/cli:latest
+      env:
+        # Debes crear este Secret en el namespace:
+        #   kubectl create secret generic testing-farm-api-token --from-literal=token=<API_TOKEN>
+        - name: TESTING_FARM_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: testing-farm-api-token
+              key: token
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        echo ">> Enviando request a Testing Farm..."
+        # Construye los parámetros de entorno para tmt si vienen definidos
+        TMT_ENV_ARGS=()
+        if [[ -n "$(params.TF_TMT_ENV)" ]]; then
+          # formato espacio-separado "K=V K2=V2"
+          TMT_ENV_ARGS=(--tmt-environment "$(params.TF_TMT_ENV)")
+        fi
+
+        # Solicitud: devuelve JSON para extraer el ID
+        REQ_JSON=$(testing-farm request \
+          --compose "$(params.TF_COMPOSE)" \
+          --arch "$(params.TF_ARCH)" \
+          --git-url "$(params.TF_GIT_URL)" \
+          --git-ref "$(params.TF_GIT_REF)" \
+          --plan "$(params.TF_PLAN)" \
+          --timeout "$(params.TF_TIMEOUT_MIN)" \
+          "${TMT_ENV_ARGS[@]}" \
+          --format json)
+
+        echo "$REQ_JSON" | sed 's/./&/g' >/dev/null # no-op para asegurar salida no vacía
+        REQ_ID=$(echo "$REQ_JSON" | jq -r '.id // .request.id // empty')
+        if [[ -z "${REQ_ID:-}" ]]; then
+          echo "No pude extraer el ID de la solicitud de Testing Farm"
+          echo "$REQ_JSON"
+          exit 2
+        fi
+        echo ">> Request ID: $REQ_ID"
+
+        echo ">> Esperando a que finalice el job en Testing Farm..."
+        # Espera activa consultando el estado; si tu CLI soporta 'watch/follow', sustitúyelo.
+        # Poll cada 30s hasta state=complete. Falla si result.global/overall no es 'passed'.
+        TIMEOUT_SECONDS=$(( ( $(params.TF_TIMEOUT_MIN) + 10 ) * 60 ))
+        DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
+
+        while true; do
+          OUT=$(testing-farm list --id "$REQ_ID" --format json || true)
+          STATE=$(echo "$OUT" | jq -r '.state // .request.state // empty')
+          RESULT=$(echo "$OUT" | jq -r '.result.overall // .result // empty')
+
+          echo "Estado actual: state=${STATE:-?} result=${RESULT:-?}"
+          if [[ "${STATE}" == "complete" ]]; then
+            if [[ "${RESULT}" == "passed" ]]; then
+              echo ">> Tests PASSED en Testing Farm"
+              exit 0
+            else
+              echo ">> Tests FAILED en Testing Farm (result=${RESULT:-unknown})"
+              # Apunta a los artefactos en la salida de CLI si lo deseas:
+              testing-farm list --id "$REQ_ID" --format text || true
+              exit 1
+            fi
+          fi
+
+          if (( $(date +%s) > DEADLINE )); then
+            echo ">> Timeout esperando a Testing Farm tras $(params.TF_TIMEOUT_MIN) min"
+            testing-farm list --id "$REQ_ID" --format text || true
+            exit 3
+          fi
+
+          sleep 30
+        done
+

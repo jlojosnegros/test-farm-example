@@ -1,0 +1,53 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: testing-farm-pipeline
+spec:
+  description: "Solicita ejecución en Testing Farm y espera el resultado"
+  params:
+    - name: TF_COMPOSE
+      type: string
+    - name: TF_ARCH
+      type: string
+      default: x86_64
+    - name: TF_GIT_URL
+      type: string
+    - name: TF_GIT_REF
+      type: string
+      default: main
+    - name: TF_PLAN
+      type: string
+    - name: TF_TIMEOUT_MIN
+      type: string
+      default: "120"
+    - name: TF_TMT_ENV
+      type: string
+      default: "" # espacio-separado, e.g. "K=V K2=V2"
+
+  tasks:
+    - name: run-testing-farm
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/<org>/<repo-tests>.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tekton/tasks/testing-farm-request.yaml
+      params:
+        - name: TF_COMPOSE
+          value: $(params.TF_COMPOSE)
+        - name: TF_ARCH
+          value: $(params.TF_ARCH)
+        - name: TF_GIT_URL
+          value: $(params.TF_GIT_URL)
+        - name: TF_GIT_REF
+          value: $(params.TF_GIT_REF)
+        - name: TF_PLAN
+          value: $(params.TF_PLAN)
+        - name: TF_TIMEOUT_MIN
+          value: $(params.TF_TIMEOUT_MIN)
+        - name: TF_TMT_ENV
+          value: $(params.TF_TMT_ENV)

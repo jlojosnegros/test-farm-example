@@ -1,0 +1,37 @@
+---
+apiVersion: appstudio.redhat.com/v1beta2
+kind: IntegrationTestScenario
+metadata:
+  name: testing-farm-integration
+  namespace: <tu-namespace>-tenant
+  labels:
+    test.appstudio.openshift.io/optional: "false" # cámbialo a "true" si quieres que no bloquee releases
+spec:
+  application: <tu-aplicacion-en-konflux>
+  # Este ITS resuelve el Pipeline desde un repo Git usando el Git Resolver
+  resolverRef:
+    resolver: git
+    params:
+      - name: url
+        value: https://github.com/<org>/<repo-tests>.git
+      - name: revision
+        value: main
+      - name: pathInRepo
+        value: tekton/pipelines/testing-farm-pipeline.yaml
+  # Parámetros que Konflux pasará al Pipeline
+  params:
+    - name: TF_COMPOSE
+      value: Fedora-Rawhide
+    - name: TF_ARCH
+      value: x86_64
+    - name: TF_GIT_URL
+      value: https://github.com/<org>/<repo-tests>.git
+    - name: TF_GIT_REF
+      value: main
+    - name: TF_PLAN
+      value: /testing-farm/run-root-script # ruta del plan tmt que ejecuta tu script como root
+    - name: TF_TIMEOUT_MIN
+      value: "120"
+    # variables para pasar al plan tmt (ejemplo)
+    - name: TF_TMT_ENV
+      value: "SCRIPT_PATH=/tests/script.sh SCRIPT_ARGS='--flag1 --flag2'"
