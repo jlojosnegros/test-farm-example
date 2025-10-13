@@ -9,10 +9,18 @@ kind: Task
 metadata:
   name: testing-farm-request
 spec:
-  description: Submit & wait for a Testing Farm request via the official CLI.
+  description: >
+    Extract image from SNAPSHOT for the given COMPONENT_NAME and submit a
+    Testing Farm request that will run it as a privileged container.
+
   params:
+    - name: SNAPSHOT
+      type: string
+    - name: COMPONENT_NAME
+      type: string
     - name: TF_COMPOSE
       type: string
+      default: RHEL-9
     - name: TF_ARCH
       type: string
       default: x86_64
@@ -23,12 +31,14 @@ spec:
       default: main
     - name: TF_PLAN
       type: string
+      default: /plans/run-root-image
     - name: TF_TIMEOUT_MIN
       type: string
       default: "120"
     - name: TF_TMT_ENV
       type: string
       default: ""
+
   steps:
     - name: request-and-wait
       # Official small container image with the Testing Farm CLI preinstalled.
@@ -46,11 +56,29 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
 
+        echo ">> Extracting image from SNAPSHOT for component: $(params.COMPONENT_NAME)"
+        SNAP_JSON=$(cat <<'JSON'
+$(params.SNAPSHOT)
+JSON
+)
+        # Snapshot has spec.components[].name and containerImage (by digest)
+        IMAGE_REF=$(echo "$SNAP_JSON" | jq -r \
+          --arg comp "$(params.COMPONENT_NAME)" \
+          '.spec.components[] | select(.name==$comp) | .containerImage')
+
+        if [[ -z "${IMAGE_REF:-}" || "${IMAGE_REF}" == "null" ]]; then
+          echo "ERROR: Could not find image for component '$(params.COMPONENT_NAME)' in Snapshot"
+          echo "$SNAP_JSON" | jq '.spec.components'
+          exit 2
+        fi
+        echo ">> IMAGE_REF: ${IMAGE_REF}"
+
         echo ">> Submitting Testing Farm request"
-        TMT_ENV_ARGS=()
+        # Merge TF_TMT_ENV with IMAGE_REF so plan/test can run the container
+        MERGED_ENV="IMAGE_REF=${IMAGE_REF}"
         if [[ -n "$(params.TF_TMT_ENV)" ]]; then
           # Space-separated "K=V K2=V2" propagated to the plan environment.
-          TMT_ENV_ARGS=(--tmt-environment "$(params.TF_TMT_ENV)")
+          MERGED_ENV="${MERGED_ENV} $(params.TF_TMT_ENV)"
         fi
 
         # Submit request and capture JSON response
@@ -60,8 +88,8 @@ spec:
           --git-url "$(params.TF_GIT_URL)" \
           --git-ref "$(params.TF_GIT_REF)" \
           --plan "$(params.TF_PLAN)" \
+          --tmt-environment "${MERGED_ENV}" \
           --timeout "$(params.TF_TIMEOUT_MIN)" \
-          "${TMT_ENV_ARGS[@]}" \
           --format json)
 
         # Extract request id (schema may vary slightly; try common fields)
@@ -69,7 +97,7 @@ spec:
         if [[ -z "${REQ_ID:-}" ]]; then
           echo "ERROR: Unable to extract Testing Farm request id"
           echo "$REQ_JSON"
-          exit 2
+          exit 3
         fi
         echo ">> Request ID: $REQ_ID"
 
@@ -85,6 +113,7 @@ spec:
           RESULT=$(echo "$OUT" | jq -r '.result.overall // .result // empty')
 
           echo "Current: state=${STATE:-?} result=${RESULT:-?}"
+
           if [[ "$STATE" == "complete" ]]; then
             if [[ "$RESULT" == "passed" ]]; then
               echo ">> PASSED"
@@ -99,7 +128,7 @@ spec:
           if (( $(date +%s) > DEADLINE )); then
             echo ">> TIMEOUT after $(params.TF_TIMEOUT_MIN) minutes"
             testing-farm list --id "$REQ_ID" --format text || true
-            exit 3
+            exit 4
           fi
 
           sleep 30
