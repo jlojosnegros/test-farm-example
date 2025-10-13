@@ -8,11 +8,20 @@ metadata:
   name: testing-farm-pipeline
 spec:
   description: >
-    Submit and monitor a Testing Farm request which executes tmt plans that run our root/privileged script.
-  # Pipeline parameters mirror ITS params one-to-one for clarity.
+    Use the Konflux-provided SNAPSHOT to find the component image, then ask
+    Testing Farm to run that image (CMD/ENTRYPOINT) in a privileged container.
   params:
+    # Provided automatically by Konflux Integration service (JSON string).
+    - name: SNAPSHOT
+      type: string
+      description: Konflux Snapshot JSON (with list of component images)
+    # Your component name inside the snapshot (to pick the right image)
+    - name: COMPONENT_NAME
+      type: string
+    # Testing Farm params
     - name: TF_COMPOSE
       type: string
+      default: RHEL-9
       description: Testing Farm compose (e.g. Fedora-41, RHEL-9.4)
     - name: TF_ARCH
       type: string
@@ -27,6 +36,7 @@ spec:
       description: Branch/commit/SHA for tmt tests
     - name: TF_PLAN
       type: string
+      default: /plans/run-root-image
       description: FMF path to the tmt plan (e.g. /plans/run-root-script)
     - name: TF_TIMEOUT_MIN
       type: string
@@ -40,17 +50,20 @@ spec:
   # Single task which contains the Testing Farm CLI calls.
   tasks:
     - name: run-testing-farm
-      # Keep the Task versioned in Git as well (good supply-chain practice).
       taskRef:
         resolver: git
         params:
           - name: url
-            value: https://github.com/<org>/<repo-tests>.git
+            value: https://github.com/yomismo/repo.git
           - name: revision
             value: main
           - name: pathInRepo
             value: tekton/tasks/testing-farm-request.yaml
       params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: COMPONENT_NAME
+          value: $(params.COMPONENT_NAME)
         - name: TF_COMPOSE
           value: $(params.TF_COMPOSE)
         - name: TF_ARCH
