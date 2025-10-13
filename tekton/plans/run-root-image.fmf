@@ -12,6 +12,21 @@ prepare+:
       - podman
       - jq
 
+  - name: Optional extra packages from $PACKAGE_LIST
+    become: true
+    script: |
+      set -euo pipefail
+      if [ -n "${PACKAGE_LIST:-}" ]; then
+        if command -v dnf >/dev/null 2>&1; then
+          dnf -y install ${PACKAGE_LIST}
+        elif command -v yum >/dev/null 2>&1; then
+          yum -y install ${PACKAGE_LIST}
+        elif command -v apt-get >/dev/null 2>&1; then
+          apt-get update && apt-get -y install ${PACKAGE_LIST}
+        else
+          echo "Unable to install packages: ${PACKAGE_LIST}"
+        fi
+      fi
 execute:
   how: tmt
   become: true
