@@ -14,10 +14,11 @@ spec:
     # Provided automatically by Konflux Integration service (JSON string).
     - name: SNAPSHOT
       type: string
-      description: Konflux Snapshot JSON (with list of component images)
+      description: Konflux Snapshot JSON (provided automatically)
     # Your component name inside the snapshot (to pick the right image)
     - name: COMPONENT_NAME
       type: string
+      description: Name of the component inside the snapshot
     # Testing Farm params
     - name: TF_COMPOSE
       type: string
@@ -47,9 +48,51 @@ spec:
       default: ""
       description: Space-separated K=V list passed to tmt as environment
 
-  # Single task which contains the Testing Farm CLI calls.
   tasks:
+    # ---- Task 1: extract image pullspec from SNAPSHOT ---------------------------
+    - name: extract-image-from-snapshot
+      taskSpec:
+        params:
+          - name: SNAPSHOT
+            type: string
+          - name: COMPONENT_NAME
+            type: string
+        results:
+          - name: image-url
+            description: Container image pullspec for the selected component
+        steps:
+          - name: find-component-image
+            image: quay.io/konflux-ci/konflux-test:stable
+            env:
+              - name: SNAPSHOT
+                value: $(params.SNAPSHOT)
+              - name: COMPONENT_NAME
+                value: $(params.COMPONENT_NAME)
+            script: |
+              #!/bin/sh
+              set -eu
+
+              COMPONENT_IMAGE=$(
+                jq -r --arg comp "${COMPONENT_NAME}" '
+                  (.spec.components // .components)[]
+                  | select(.name == $comp)
+                  | .containerImage
+                ' <<< "${SNAPSHOT}"
+              )
+
+              if [ -z "${COMPONENT_IMAGE}" ] || [ "${COMPONENT_IMAGE}" = "null" ]; then
+                echo "ERROR: component '${COMPONENT_NAME}' not found in Snapshot"
+                echo "Snapshot components:"
+                echo "${SNAPSHOT}" | jq '.spec.components // .components'
+                exit 2
+              fi
+
+              echo "Found image: ${COMPONENT_IMAGE}"
+              echo -n "${COMPONENT_IMAGE}" > "$(results.image-url.path)"
+
+    # ---- Task 2: run Testing Farm sending IMAGE_REF in TF_TMT_ENV ------
     - name: run-testing-farm
+      runAfter: [extract-image-from-snapshot]
       taskRef:
         resolver: git
         params:
@@ -60,10 +103,6 @@ spec:
           - name: pathInRepo
             value: tekton/tasks/testing-farm-request.yaml
       params:
-        - name: SNAPSHOT
-          value: $(params.SNAPSHOT)
-        - name: COMPONENT_NAME
-          value: $(params.COMPONENT_NAME)
         - name: TF_COMPOSE
           value: $(params.TF_COMPOSE)
         - name: TF_ARCH
@@ -77,5 +116,6 @@ spec:
         - name: TF_TIMEOUT_MIN
           value: $(params.TF_TIMEOUT_MIN)
         - name: TF_TMT_ENV
-          value: $(params.TF_TMT_ENV)
-
+          value: >
+            IMAGE_REF=$(tasks.extract-image-from-snapshot.results.image-url)
+            $(params.TF_TMT_ENV)
