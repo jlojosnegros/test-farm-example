@@ -90,7 +90,7 @@ spec:
               echo "Found image: ${COMPONENT_IMAGE}"
               echo -n "${COMPONENT_IMAGE}" > "$(results.image-url.path)"
 
-    # ---- Task 2: run Testing Farm sending IMAGE_REF in TF_TMT_ENV ------
+    # ---- Task 2: run Testing Farm sending ------
     - name: run-testing-farm
       runAfter: [extract-image-from-snapshot]
       taskRef:
@@ -115,7 +115,7 @@ spec:
           value: $(params.TF_PLAN)
         - name: TF_TIMEOUT_MIN
           value: $(params.TF_TIMEOUT_MIN)
+        - name: IMAGE_REF
+          value: $(tasks.extract-image-from-snapshot.results.image-url)
         - name: TF_TMT_ENV
-          value: >
-            IMAGE_REF=$(tasks.extract-image-from-snapshot.results.image-url)
-            $(params.TF_TMT_ENV)
+          value: $(params.TF_TMT_ENV)
