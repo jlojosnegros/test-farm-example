@@ -1,3 +1,4 @@
+---
 summary: Run the snapshot-provided image as a privileged container
 id: /plans/run-root-image
 
@@ -5,7 +6,7 @@ discover:
   how: fmf
   # By default searches from the repo root,
   # 'test' filter allows you to change the root search folder
-  test: /tests/run-root-script
+  test: /tests/run-root-image
 
 prepare+:
   - name: Install podman & helpers
