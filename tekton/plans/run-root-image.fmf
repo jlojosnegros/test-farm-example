@@ -1,0 +1,20 @@
+summary: Run the snapshot-provided image as a privileged container
+id: /plans/run-root-image
+
+discover:
+  how: fmf
+
+prepare+:
+  - name: Install podman & helpers
+    become: true
+    how: install
+    package:
+      - podman
+      - jq
+
+execute:
+  how: tmt
+  become: true
+
+report:
+  - how: display

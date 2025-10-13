@@ -1,0 +1,7 @@
+summary: Start container from $IMAGE_REF with --privileged and check it succeeds
+id: /tests/run-root-image/basic
+test: ./test.sh
+framework: shell
+enabled: true
+tier: 1
+
