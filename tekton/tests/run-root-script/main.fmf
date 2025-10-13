@@ -1,2 +1,10 @@
-summary: Concise summary describing what the test does
-test: ./test.sh
+# Single shell test which invokes your script directly on the VM
+
+summary: Invoke project script with root and (if needed) privileged container
+id: /tests/run-root-script/basic
+contact: you@example.com
+component: your-component
+test: ./test.sh       # test implementation (shell)
+framework: shell      # pure shell, no beakerlib required
+enabled: true
+tier: 1

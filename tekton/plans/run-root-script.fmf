@@ -1,4 +1,53 @@
-summary: Basic smoke test
+# FMF / tmt plan that:
+# - Discovers tests under ./tests (fmf)
+# - Prepares environment as root (become: true): installs needed packages
+# - Executes tests as root (become: true)
+# - Allows switching between running the script directly on the VM or
+#   inside a privileged container via USE_CONTAINER env var.
+
+summary: Run privileged/root script via tmt on Testing Farm
+id: /plans/run-root-script
+
+# Discover tests from this repository using FMF metadata
+discover:
+  how: fmf
+  # By default searches from the repo root; adjust 'test' filter if needed
+  # test: /tests/run-root-script
+
+# In Testing Farm the 'provision' step is handled by the worker based on
+# the request compose/arch, so we don't specify it here explicitly.
+
+# Prepare the environment as root (tmt 1.29+ 'become' elevates privileges).
+prepare+:
+  - name: Install required packages
+    become: true
+    how: install
+    # Default packages for both direct and containerized runs; you can add more
+    # by passing PACKAGE_LIST in TF_TMT_ENV (space-separated)
+    package:
+      - jq
+    # Install extra packages provided by env var (if any)
+  - name: Optional extra packages from $PACKAGE_LIST
+    become: true
+    script: |
+      set -euo pipefail
+      if [ -n "${PACKAGE_LIST:-}" ]; then
+        if command -v dnf >/dev/null 2>&1; then
+          dnf -y install ${PACKAGE_LIST}
+        elif command -v yum >/dev/null 2>&1; then
+          yum -y install ${PACKAGE_LIST}
+        elif command -v apt-get >/dev/null 2>&1; then
+          apt-get update && apt-get -y install ${PACKAGE_LIST}
+        fi
+      fi
+
+# Execute tests as root (so the script can perform privileged operations).
 execute:
-    how: tmt
-    script: tmt --help
+  how: tmt
+  # 'become' applies to the whole execute step
+  become: true
+
+# Simple text report
+report:
+  - how: display
+
