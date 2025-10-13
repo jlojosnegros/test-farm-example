@@ -56,7 +56,6 @@ spec:
     # and runs with a couple of flags. Extend as needed.
     - name: TF_TMT_ENV
       value: >
-        USE_CONTAINER=true
         # Optional: override CMD/ARGS if the image needs a different entrypoint
         # CONTAINER_CMD=""
         # CONTAINER_ARGS=""
