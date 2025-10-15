@@ -15,11 +15,10 @@ provision:
   become: true
 
 prepare+:
-  - name: Install podman & helpers
+  - name: Install podman
     how: install
     package:
       - podman
-      - jq
 
   - name: Optional extra packages from $PACKAGE_LIST
     how: shell
