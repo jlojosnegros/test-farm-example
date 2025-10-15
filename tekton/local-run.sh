@@ -86,6 +86,7 @@ while true; do
 
   echo "Current: state=${STATE:-?} result=${RESULT:-?}"
 
+  # Check if request reached a terminal state
   if [[ "$STATE" == "complete" ]]; then
     if [[ "$RESULT" == "passed" ]]; then
       echo ">> PASSED"
@@ -95,12 +96,21 @@ while true; do
       testing-farm list --id "$REQ_ID" --format text || true
       exit 1
     fi
+  elif [[ "$STATE" == "error" ]]; then
+    echo ">> ERROR: Infrastructure error occurred"
+    testing-farm list --id "$REQ_ID" --format text || true
+    exit 2
+  elif [[ "$STATE" == "canceled" ]]; then
+    echo ">> CANCELED: Request was canceled"
+    testing-farm list --id "$REQ_ID" --format text || true
+    exit 3
   fi
 
+  # Check for timeout
   if (( $(date +%s) > DEADLINE )); then
     echo ">> TIMEOUT after ${TF_TIMEOUT_MIN} minutes"
     testing-farm list --id "$REQ_ID" --format text || true
-    exit 3
+    exit 4
   fi
 
   sleep 30
