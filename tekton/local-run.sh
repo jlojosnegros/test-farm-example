@@ -5,7 +5,18 @@ set +a
 
 set -euo pipefail
 
-echo ">> IMAGE_REF: ${IMAGE_REF}"
+echo "==> Configuration loaded from .env:"
+echo "    TESTING_FARM_API_TOKEN: ${TESTING_FARM_API_TOKEN:0:8}... (hidden)"
+echo "    TF_COMPOSE: ${TF_COMPOSE}"
+echo "    TF_ARCH: ${TF_ARCH}"
+echo "    IMAGE_REF: ${IMAGE_REF}"
+echo "    TF_GIT_URL: ${TF_GIT_URL}"
+echo "    TF_GIT_REF: ${TF_GIT_REF}"
+echo "    TF_PATH: ${TF_PATH}"
+echo "    TF_PLAN: ${TF_PLAN}"
+echo "    TF_TIMEOUT_MIN: ${TF_TIMEOUT_MIN}"
+echo "    TF_TMT_ENV: ${TF_TMT_ENV}"
+echo ""
 echo ">> Submitting Testing Farm request"
 
 # Build array of --tmt-environment arguments. We pass IMAGE_REF as its own env var,
@@ -26,10 +37,19 @@ REQ_JSON=$(testing-farm request \
   --timeout "${TF_TIMEOUT_MIN}" \
   "${TMT_ENV_ARGS[@]}")
 
+echo ""
+echo "==> Request Response (JSON):"
+echo "$REQ_JSON" | jq '.' 2>/dev/null || echo "$REQ_JSON"
+echo ""
+
 # Extract request id (schema may vary slightly; try common fields)
 REQ_ID=$(echo "$REQ_JSON" | jq -r '.id // .request.id // empty')
+echo "==> Extracted Request ID: '${REQ_ID}'"
+echo ""
+
 if [[ -z "${REQ_ID:-}" ]]; then
   echo "ERROR: Unable to extract Testing Farm request id"
+  echo "Full response was:"
   echo "$REQ_JSON"
   exit 2
 fi
