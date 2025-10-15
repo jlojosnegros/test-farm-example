@@ -55,7 +55,7 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
 
-        echo ">> IMAGE_REF: ${IMAGE_REF}"
+        echo ">> IMAGE_REF: $(params.IMAGE_REF)"
         echo ">> Submitting Testing Farm request"
 
         # Build array of --tmt-environment arguments. We pass IMAGE_REF as its own env var,
