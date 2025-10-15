@@ -16,7 +16,7 @@ if [[ -n "${TF_TMT_ENV}" ]]; then
   TMT_ENV_ARGS+=( --tmt-environment "${TF_TMT_ENV}" )
 fi
 
-# Submit request and capture JSON response
+# Submit request and capture JSON response (JSON by default?)
 REQ_JSON=$(testing-farm request \
   --compose "${TF_COMPOSE}" \
   --arch "${TF_ARCH}" \
@@ -24,8 +24,7 @@ REQ_JSON=$(testing-farm request \
   --git-ref "${TF_GIT_REF}" \
   --plan "${TF_PLAN}" \
   --timeout "${TF_TIMEOUT_MIN}" \
-  "${TMT_ENV_ARGS[@]}" \
-  --format json)
+  "${TMT_ENV_ARGS[@]}")
 
 # Extract request id (schema may vary slightly; try common fields)
 REQ_ID=$(echo "$REQ_JSON" | jq -r '.id // .request.id // empty')
