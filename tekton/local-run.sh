@@ -27,8 +27,8 @@ if [[ -n "${TF_TMT_ENV}" ]]; then
   TMT_ENV_ARGS+=( --tmt-environment "${TF_TMT_ENV}" )
 fi
 
-# Submit request and capture JSON response (JSON by default?)
-REQ_JSON=$(testing-farm request \
+# Submit request (with --no-wait to get ID immediately without waiting)
+REQ_OUTPUT=$(testing-farm request \
   --compose "${TF_COMPOSE}" \
   --arch "${TF_ARCH}" \
   --git-url "${TF_GIT_URL}" \
@@ -36,25 +36,34 @@ REQ_JSON=$(testing-farm request \
   --path "${TF_PATH}" \
   --plan "${TF_PLAN}" \
   --timeout "${TF_TIMEOUT_MIN}" \
-  "${TMT_ENV_ARGS[@]}")
+  --no-wait \
+  "${TMT_ENV_ARGS[@]}" 2>&1)
 
 echo ""
-echo "==> Request Response (JSON):"
-echo "$REQ_JSON" | jq '.' 2>/dev/null || echo "$REQ_JSON"
+echo "==> Request Output:"
+echo "$REQ_OUTPUT"
 echo ""
 
-# Extract request id (schema may vary slightly; try common fields)
-REQ_ID=$(echo "$REQ_JSON" | jq -r '.id // .request.id // empty')
+# Extract request ID from the "api" line
+# Format: 🔎 api https://api.dev.testing-farm.io/v0.1/requests/REQUEST-ID
+REQ_ID=$(echo "$REQ_OUTPUT" | grep -oP 'requests/\K[a-f0-9-]+' | head -1)
 echo "==> Extracted Request ID: '${REQ_ID}'"
-echo ""
 
 if [[ -z "${REQ_ID:-}" ]]; then
   echo "ERROR: Unable to extract Testing Farm request id"
-  echo "Full response was:"
-  echo "$REQ_JSON"
+  echo "Full output was:"
+  echo "$REQ_OUTPUT"
   exit 2
 fi
+
+# Construct URLs
+API_URL="https://api.dev.testing-farm.io/v0.1/requests/${REQ_ID}"
+ARTIFACTS_URL="https://artifacts.dev.testing-farm.io/${REQ_ID}"
+
+echo ""
 echo ">> Request ID: $REQ_ID"
+echo ">> API URL: $API_URL"
+echo ">> Artifacts URL: $ARTIFACTS_URL"
 
 echo ">> Waiting for completion (timeout: ${TF_TIMEOUT_MIN} min)"
 TIMEOUT_SECONDS=$(( ( ${TF_TIMEOUT_MIN} + 10 ) * 60 ))

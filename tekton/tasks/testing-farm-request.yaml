@@ -70,8 +70,8 @@ spec:
           TMT_ENV_ARGS+=( --tmt-environment "$(params.TF_TMT_ENV)" )
         fi
 
-        # Submit request and capture JSON response (request returns JSON by default)
-        REQ_JSON=$(testing-farm request \
+        # Submit request (with --no-wait to get ID immediately without waiting)
+        REQ_OUTPUT=$(testing-farm request \
           --compose "$(params.TF_COMPOSE)" \
           --arch "$(params.TF_ARCH)" \
           --git-url "$(params.TF_GIT_URL)" \
@@ -79,16 +79,34 @@ spec:
           --path "$(params.TF_PATH)" \
           --plan "$(params.TF_PLAN)" \
           --timeout "$(params.TF_TIMEOUT_MIN)" \
-          "${TMT_ENV_ARGS[@]}")
+          --no-wait \
+          "${TMT_ENV_ARGS[@]}" 2>&1)
 
-        # Extract request id (schema may vary slightly; try common fields)
-        REQ_ID=$(echo "$REQ_JSON" | jq -r '.id // .request.id // empty')
+        echo ""
+        echo "==> Request Output:"
+        echo "$REQ_OUTPUT"
+        echo ""
+
+        # Extract request ID from the "api" line
+        # Format: 🔎 api https://api.dev.testing-farm.io/v0.1/requests/REQUEST-ID
+        REQ_ID=$(echo "$REQ_OUTPUT" | grep -oP 'requests/\K[a-f0-9-]+' | head -1)
+        echo "==> Extracted Request ID: '${REQ_ID}'"
+
         if [[ -z "${REQ_ID:-}" ]]; then
           echo "ERROR: Unable to extract Testing Farm request id"
-          echo "$REQ_JSON"
+          echo "Full output was:"
+          echo "$REQ_OUTPUT"
           exit 2
         fi
+
+        # Construct URLs
+        API_URL="https://api.dev.testing-farm.io/v0.1/requests/${REQ_ID}"
+        ARTIFACTS_URL="https://artifacts.dev.testing-farm.io/${REQ_ID}"
+
+        echo ""
         echo ">> Request ID: $REQ_ID"
+        echo ">> API URL: $API_URL"
+        echo ">> Artifacts URL: $ARTIFACTS_URL"
 
         echo ">> Waiting for completion (timeout: $(params.TF_TIMEOUT_MIN) min)"
         TIMEOUT_SECONDS=$(( ( $(params.TF_TIMEOUT_MIN) + 10 ) * 60 ))
