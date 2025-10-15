@@ -44,6 +44,9 @@ spec:
       value: https://github.com/yomismo/repo.git
     - name: TF_GIT_REF
       value: main
+    # Path to tmt metadata tree root (relative to git repo root)
+    - name: TF_PATH
+      value: tekton
     # Path to the tmt plan in your repo (defined below)
     - name: TF_PLAN
       value: /plans/run-root-image

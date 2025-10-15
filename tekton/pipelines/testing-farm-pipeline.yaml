@@ -35,6 +35,10 @@ spec:
       type: string
       default: main
       description: Branch/commit/SHA for tmt tests
+    - name: TF_PATH
+      type: string
+      default: "."
+      description: Path to tmt metadata tree root (relative to git repo root)
     - name: TF_PLAN
       type: string
       default: /plans/run-root-image
@@ -111,6 +115,8 @@ spec:
           value: $(params.TF_GIT_URL)
         - name: TF_GIT_REF
           value: $(params.TF_GIT_REF)
+        - name: TF_PATH
+          value: $(params.TF_PATH)
         - name: TF_PLAN
           value: $(params.TF_PLAN)
         - name: TF_TIMEOUT_MIN

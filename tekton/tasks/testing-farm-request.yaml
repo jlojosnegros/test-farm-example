@@ -25,6 +25,10 @@ spec:
     - name: TF_GIT_REF
       type: string
       default: main
+    - name: TF_PATH
+      type: string
+      default: "."
+      description: Path to tmt metadata tree root (relative to git repo root)
     - name: TF_PLAN
       type: string
       default: /plans/run-root-image
@@ -72,6 +76,7 @@ spec:
           --arch "$(params.TF_ARCH)" \
           --git-url "$(params.TF_GIT_URL)" \
           --git-ref "$(params.TF_GIT_REF)" \
+          --path "$(params.TF_PATH)" \
           --plan "$(params.TF_PLAN)" \
           --timeout "$(params.TF_TIMEOUT_MIN)" \
           "${TMT_ENV_ARGS[@]}" \

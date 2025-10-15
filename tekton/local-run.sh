@@ -33,6 +33,7 @@ REQ_JSON=$(testing-farm request \
   --arch "${TF_ARCH}" \
   --git-url "${TF_GIT_URL}" \
   --git-ref "${TF_GIT_REF}" \
+  --path "${TF_PATH}" \
   --plan "${TF_PLAN}" \
   --timeout "${TF_TIMEOUT_MIN}" \
   "${TMT_ENV_ARGS[@]}")
