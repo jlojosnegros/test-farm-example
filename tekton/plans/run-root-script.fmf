@@ -14,21 +14,17 @@ discover:
   # By default searches from the repo root; adjust 'test' filter if needed
   # test: /tests/run-root-script
 
-# In Testing Farm the 'provision' step is handled by the worker based on
-# the request compose/arch, so we don't specify it here explicitly.
+# Testing Farm handles provision, but we specify 'become' to ensure
+# prepare, execute, and finish steps run with sudo/root privileges
+provision:
+  how: virtual
+  become: true
 
-# Prepare the environment as root (tmt 1.29+ 'become' elevates privileges).
+# Prepare the environment (runs with root privileges due to become: true).
 prepare+:
-  - name: Install required packages
-    become: true
-    how: install
-    # Default packages for both direct and containerized runs; you can add more
-    # by passing PACKAGE_LIST in TF_TMT_ENV (space-separated)
-    package:
-      - jq
-    # Install extra packages provided by env var (if any)
+  # Install extra packages provided by env var (if any)
   - name: Optional extra packages from $PACKAGE_LIST
-    become: true
+    how: shell
     script: |
       set -euo pipefail
       if [ -n "${PACKAGE_LIST:-}" ]; then
@@ -41,11 +37,9 @@ prepare+:
         fi
       fi
 
-# Execute tests as root (so the script can perform privileged operations).
+# Execute tests with tmt (privilege escalation handled by test definitions)
 execute:
   how: tmt
-  # 'become' applies to the whole execute step
-  become: true
 
 # Simple text report
 report:
