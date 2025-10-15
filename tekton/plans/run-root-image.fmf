@@ -8,16 +8,21 @@ discover:
   # 'test' filter allows you to change the root search folder
   test: /tests/run-root-image
 
+# Testing Farm handles provision, but we specify 'become' to ensure
+# prepare, execute, and finish steps run with sudo/root privileges
+provision:
+  how: virtual
+  become: true
+
 prepare+:
   - name: Install podman & helpers
-    become: true
     how: install
     package:
       - podman
       - jq
 
   - name: Optional extra packages from $PACKAGE_LIST
-    become: true
+    how: shell
     script: |
       set -euo pipefail
       if [ -n "${PACKAGE_LIST:-}" ]; then
@@ -33,7 +38,6 @@ prepare+:
       fi
 execute:
   how: tmt
-  become: true
 
 report:
   - how: display
