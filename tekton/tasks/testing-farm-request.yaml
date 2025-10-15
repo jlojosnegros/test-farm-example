@@ -55,6 +55,14 @@ spec:
       default: ""
       description: Password or token for private container registry (optional)
 
+  results:
+    - name: TEST_OUTPUT
+      description: Tekton task test output in JSON format
+    - name: ARTIFACTS_URL
+      description: URL to Testing Farm artifacts
+    - name: REQUEST_ID
+      description: Testing Farm request ID for debugging
+
   steps:
     - name: request-and-wait
       # Official small container image with the Testing Farm CLI preinstalled.
@@ -156,6 +164,33 @@ spec:
         echo ">> API URL: $API_URL"
         echo ">> Artifacts URL: $ARTIFACTS_URL"
 
+        # Write request ID and artifacts URL to results immediately
+        echo -n "${REQ_ID}" | tee "$(results.REQUEST_ID.path)"
+        echo -n "${ARTIFACTS_URL}" | tee "$(results.ARTIFACTS_URL.path)"
+
+        # Function to generate TEST_OUTPUT JSON
+        generate_test_output() {
+          local result="$1"
+          local note="$2"
+          local successes="${3:-0}"
+          local failures="${4:-0}"
+          local warnings="${5:-0}"
+
+          local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          cat <<EOF
+        {
+          "result": "${result}",
+          "timestamp": "${timestamp}",
+          "note": "${note}",
+          "namespace": "testing-farm",
+          "successes": ${successes},
+          "failures": ${failures},
+          "warnings": ${warnings}
+        }
+        EOF
+        }
+
         echo ">> Waiting for completion (timeout: $(params.TF_TIMEOUT_MIN) min)"
         TIMEOUT_SECONDS=$(( ( $(params.TF_TIMEOUT_MIN) + 10 ) * 60 ))
         DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
@@ -172,19 +207,31 @@ spec:
           if [[ "$STATE" == "complete" ]]; then
             if [[ "$RESULT" == "passed" ]]; then
               echo ">> PASSED"
+              NOTE="Testing Farm request ${REQ_ID} completed successfully. All tests passed. Artifacts: ${ARTIFACTS_URL}"
+              TEST_OUTPUT=$(generate_test_output "SUCCESS" "$NOTE" 1 0 0)
+              echo "${TEST_OUTPUT}" | tee "$(results.TEST_OUTPUT.path)"
               exit 0
             else
               echo ">> FAILED (result=${RESULT:-unknown})"
               testing-farm list --id "$REQ_ID" --format text || true
+              NOTE="Testing Farm request ${REQ_ID} failed with result: ${RESULT:-unknown}. Check artifacts: ${ARTIFACTS_URL}"
+              TEST_OUTPUT=$(generate_test_output "FAILURE" "$NOTE" 0 1 0)
+              echo "${TEST_OUTPUT}" | tee "$(results.TEST_OUTPUT.path)"
               exit 1
             fi
           elif [[ "$STATE" == "error" ]]; then
             echo ">> ERROR: Infrastructure error occurred"
             testing-farm list --id "$REQ_ID" --format text || true
+            NOTE="Testing Farm request ${REQ_ID} encountered an infrastructure error. Check artifacts: ${ARTIFACTS_URL}"
+            TEST_OUTPUT=$(generate_test_output "ERROR" "$NOTE" 0 0 1)
+            echo "${TEST_OUTPUT}" | tee "$(results.TEST_OUTPUT.path)"
             exit 2
           elif [[ "$STATE" == "canceled" ]]; then
             echo ">> CANCELED: Request was canceled"
             testing-farm list --id "$REQ_ID" --format text || true
+            NOTE="Testing Farm request ${REQ_ID} was canceled. Check artifacts: ${ARTIFACTS_URL}"
+            TEST_OUTPUT=$(generate_test_output "ERROR" "$NOTE" 0 0 1)
+            echo "${TEST_OUTPUT}" | tee "$(results.TEST_OUTPUT.path)"
             exit 3
           fi
 
@@ -192,6 +239,9 @@ spec:
           if (( $(date +%s) > DEADLINE )); then
             echo ">> TIMEOUT after $(params.TF_TIMEOUT_MIN) minutes"
             testing-farm list --id "$REQ_ID" --format text || true
+            NOTE="Testing Farm request ${REQ_ID} timed out after $(params.TF_TIMEOUT_MIN) minutes. Check artifacts: ${ARTIFACTS_URL}"
+            TEST_OUTPUT=$(generate_test_output "ERROR" "$NOTE" 0 0 1)
+            echo "${TEST_OUTPUT}" | tee "$(results.TEST_OUTPUT.path)"
             exit 4
           fi
 
