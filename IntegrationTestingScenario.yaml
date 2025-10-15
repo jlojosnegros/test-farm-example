@@ -63,3 +63,31 @@ spec:
     # Used for reportportal, polarion, etc. Usually empty for most use cases.
     - name: TF_TMT_ENV
       value: ""
+
+    # Registry credentials for private images (SECURITY NOTE!)
+    # WARNING: Do NOT put credentials directly in this file in production!
+    # Instead, store them in a Kubernetes Secret and reference them in the task:
+    #
+    # 1. Create secret:
+    #    kubectl -n <namespace> create secret generic container-registry-credentials \
+    #      --from-literal=username='your-username' \
+    #      --from-literal=password='your-token'
+    #
+    # 2. Modify tekton/tasks/testing-farm-request.yaml to add env section:
+    #    env:
+    #      - name: REGISTRY_USER
+    #        valueFrom:
+    #          secretKeyRef:
+    #            name: container-registry-credentials
+    #            key: username
+    #      - name: REGISTRY_PASSWORD
+    #        valueFrom:
+    #          secretKeyRef:
+    #            name: container-registry-credentials
+    #            key: password
+    #
+    # For Quay.io, use Robot Accounts: namespace+robotname as username
+    - name: REGISTRY_USER
+      value: ""
+    - name: REGISTRY_PASSWORD
+      value: ""

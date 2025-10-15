@@ -23,6 +23,13 @@ echo ">> Submitting Testing Farm request"
 # Build array of --environment arguments for test environment variables.
 # Always pass IMAGE_REF, plus any user-specified variables from TF_TEST_ENV.
 TEST_ENV_ARGS=( --environment "IMAGE_REF=${IMAGE_REF}" )
+
+# Add registry credentials if provided
+if [[ -n "${REGISTRY_USER:-}" ]] && [[ -n "${REGISTRY_PASSWORD:-}" ]]; then
+  TEST_ENV_ARGS+=( --environment "REGISTRY_USER=${REGISTRY_USER}" )
+  TEST_ENV_ARGS+=( --environment "REGISTRY_PASSWORD=${REGISTRY_PASSWORD}" )
+fi
+
 if [[ -n "${TF_TEST_ENV}" ]]; then
   # Space-separated "K=V K2=V2" propagated to the test environment.
   TEST_ENV_ARGS+=( --environment "${TF_TEST_ENV}" )

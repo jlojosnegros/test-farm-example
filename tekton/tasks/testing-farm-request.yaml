@@ -46,6 +46,14 @@ spec:
     - name: IMAGE_REF
       type: string
       description: Container image pullspec to run on Testing Farm VM
+    - name: REGISTRY_USER
+      type: string
+      default: ""
+      description: Username for private container registry (optional)
+    - name: REGISTRY_PASSWORD
+      type: string
+      default: ""
+      description: Password or token for private container registry (optional)
 
   steps:
     - name: request-and-wait
@@ -70,6 +78,13 @@ spec:
         # Build array of --environment arguments for test environment variables.
         # Always pass IMAGE_REF, plus any user-specified variables from TF_TEST_ENV.
         TEST_ENV_ARGS=( --environment "IMAGE_REF=$(params.IMAGE_REF)" )
+
+        # Add registry credentials if provided
+        if [[ -n "$(params.REGISTRY_USER)" ]] && [[ -n "$(params.REGISTRY_PASSWORD)" ]]; then
+          TEST_ENV_ARGS+=( --environment "REGISTRY_USER=$(params.REGISTRY_USER)" )
+          TEST_ENV_ARGS+=( --environment "REGISTRY_PASSWORD=$(params.REGISTRY_PASSWORD)" )
+        fi
+
         if [[ -n "$(params.TF_TEST_ENV)" ]]; then
           # Space-separated "K=V K2=V2" propagated to the test environment.
           TEST_ENV_ARGS+=( --environment "$(params.TF_TEST_ENV)" )
