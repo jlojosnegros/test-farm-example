@@ -69,11 +69,11 @@ echo ">> Waiting for completion (timeout: ${TF_TIMEOUT_MIN} min)"
 TIMEOUT_SECONDS=$(( ( ${TF_TIMEOUT_MIN} + 10 ) * 60 ))
 DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
 
-# Poll every 30s; 
+# Poll every 30s;
 while true; do
   OUT=$(testing-farm list --id "$REQ_ID" --format json || true)
-  STATE=$(echo "$OUT" | jq -r '.state // .request.state // empty')
-  RESULT=$(echo "$OUT" | jq -r '.result.overall // .result // empty')
+  STATE=$(echo "$OUT" | jq -r '.[0].state // empty')
+  RESULT=$(echo "$OUT" | jq -r '.[0].result.overall // .[0].result // empty')
 
   echo "Current: state=${STATE:-?} result=${RESULT:-?}"
 
