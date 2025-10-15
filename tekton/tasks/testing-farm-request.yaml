@@ -70,7 +70,7 @@ spec:
           TMT_ENV_ARGS+=( --tmt-environment "$(params.TF_TMT_ENV)" )
         fi
 
-        # Submit request and capture JSON response
+        # Submit request and capture JSON response (request returns JSON by default)
         REQ_JSON=$(testing-farm request \
           --compose "$(params.TF_COMPOSE)" \
           --arch "$(params.TF_ARCH)" \
@@ -79,8 +79,7 @@ spec:
           --path "$(params.TF_PATH)" \
           --plan "$(params.TF_PLAN)" \
           --timeout "$(params.TF_TIMEOUT_MIN)" \
-          "${TMT_ENV_ARGS[@]}" \
-          --format json)
+          "${TMT_ENV_ARGS[@]}")
 
         # Extract request id (schema may vary slightly; try common fields)
         REQ_ID=$(echo "$REQ_JSON" | jq -r '.id // .request.id // empty')
