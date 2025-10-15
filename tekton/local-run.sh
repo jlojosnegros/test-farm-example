@@ -35,6 +35,26 @@ if [[ -n "${TF_TMT_ENV}" ]]; then
   TMT_ENV_ARGS+=( --tmt-environment "${TF_TMT_ENV}" )
 fi
 
+# Display the exact command that will be executed
+echo ""
+echo "==> Executing command:"
+echo "testing-farm request \\"
+echo "  --compose \"${TF_COMPOSE}\" \\"
+echo "  --arch \"${TF_ARCH}\" \\"
+echo "  --git-url \"${TF_GIT_URL}\" \\"
+echo "  --git-ref \"${TF_GIT_REF}\" \\"
+echo "  --path \"${TF_PATH}\" \\"
+echo "  --plan \"${TF_PLAN}\" \\"
+echo "  --timeout \"${TF_TIMEOUT_MIN}\" \\"
+echo "  --no-wait \\"
+for arg in "${TEST_ENV_ARGS[@]}"; do
+  echo "  $arg \\"
+done
+for arg in "${TMT_ENV_ARGS[@]}"; do
+  echo "  $arg"
+done
+echo ""
+
 # Submit request (with --no-wait to get ID immediately without waiting)
 REQ_OUTPUT=$(testing-farm request \
   --compose "${TF_COMPOSE}" \
