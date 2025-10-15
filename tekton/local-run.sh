@@ -15,15 +15,23 @@ echo "    TF_GIT_REF: ${TF_GIT_REF}"
 echo "    TF_PATH: ${TF_PATH}"
 echo "    TF_PLAN: ${TF_PLAN}"
 echo "    TF_TIMEOUT_MIN: ${TF_TIMEOUT_MIN}"
+echo "    TF_TEST_ENV: ${TF_TEST_ENV}"
 echo "    TF_TMT_ENV: ${TF_TMT_ENV}"
 echo ""
 echo ">> Submitting Testing Farm request"
 
-# Build array of --tmt-environment arguments. We pass IMAGE_REF as its own env var,
-# separately from any other TF_TMT_ENV provided by the user.
-TMT_ENV_ARGS=( --tmt-environment "IMAGE_REF=${IMAGE_REF}" )
+# Build array of --environment arguments for test environment variables.
+# Always pass IMAGE_REF, plus any user-specified variables from TF_TEST_ENV.
+TEST_ENV_ARGS=( --environment "IMAGE_REF=${IMAGE_REF}" )
+if [[ -n "${TF_TEST_ENV}" ]]; then
+  # Space-separated "K=V K2=V2" propagated to the test environment.
+  TEST_ENV_ARGS+=( --environment "${TF_TEST_ENV}" )
+fi
+
+# Build array of --tmt-environment arguments for tmt process configuration.
+# Used for configuring tmt report plugins (reportportal, polarion, etc).
+TMT_ENV_ARGS=()
 if [[ -n "${TF_TMT_ENV}" ]]; then
-  # Space-separated "K=V K2=V2" propagated to the plan environment.
   TMT_ENV_ARGS+=( --tmt-environment "${TF_TMT_ENV}" )
 fi
 
@@ -37,6 +45,7 @@ REQ_OUTPUT=$(testing-farm request \
   --plan "${TF_PLAN}" \
   --timeout "${TF_TIMEOUT_MIN}" \
   --no-wait \
+  "${TEST_ENV_ARGS[@]}" \
   "${TMT_ENV_ARGS[@]}" 2>&1)
 
 echo ""

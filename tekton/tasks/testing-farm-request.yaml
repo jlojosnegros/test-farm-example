@@ -35,9 +35,14 @@ spec:
     - name: TF_TIMEOUT_MIN
       type: string
       default: "120"
+    - name: TF_TEST_ENV
+      type: string
+      default: ""
+      description: Variables to pass to test environment (space-separated K=V pairs)
     - name: TF_TMT_ENV
       type: string
       default: ""
+      description: Variables to pass to tmt process for report plugins (space-separated K=V pairs)
     - name: IMAGE_REF
       type: string
       description: Container image pullspec to run on Testing Farm VM
@@ -62,11 +67,18 @@ spec:
         echo ">> IMAGE_REF: $(params.IMAGE_REF)"
         echo ">> Submitting Testing Farm request"
 
-        # Build array of --tmt-environment arguments. We pass IMAGE_REF as its own env var,
-        # separately from any other TF_TMT_ENV provided by the user.
-        TMT_ENV_ARGS=( --tmt-environment "IMAGE_REF=$(params.IMAGE_REF)" )
+        # Build array of --environment arguments for test environment variables.
+        # Always pass IMAGE_REF, plus any user-specified variables from TF_TEST_ENV.
+        TEST_ENV_ARGS=( --environment "IMAGE_REF=$(params.IMAGE_REF)" )
+        if [[ -n "$(params.TF_TEST_ENV)" ]]; then
+          # Space-separated "K=V K2=V2" propagated to the test environment.
+          TEST_ENV_ARGS+=( --environment "$(params.TF_TEST_ENV)" )
+        fi
+
+        # Build array of --tmt-environment arguments for tmt process configuration.
+        # Used for configuring tmt report plugins (reportportal, polarion, etc).
+        TMT_ENV_ARGS=()
         if [[ -n "$(params.TF_TMT_ENV)" ]]; then
-          # Space-separated "K=V K2=V2" propagated to the plan environment.
           TMT_ENV_ARGS+=( --tmt-environment "$(params.TF_TMT_ENV)" )
         fi
 
@@ -80,6 +92,7 @@ spec:
           --plan "$(params.TF_PLAN)" \
           --timeout "$(params.TF_TIMEOUT_MIN)" \
           --no-wait \
+          "${TEST_ENV_ARGS[@]}" \
           "${TMT_ENV_ARGS[@]}" 2>&1)
 
         echo ""

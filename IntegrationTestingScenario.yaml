@@ -54,11 +54,12 @@ spec:
     - name: TF_TIMEOUT_MIN
       value: "120"
 
-    # Extra environment variables passed to the tmt plan.
-    # Defaults below assume your script lives at ./tests/script.sh
-    # and runs with a couple of flags. Extend as needed.
+    # Environment variables passed to the test environment (available in test scripts).
+    # Add variables like CONTAINER_CMD="..." CONTAINER_ARGS="..." if needed.
+    - name: TF_TEST_ENV
+      value: ""
+
+    # Environment variables passed to tmt process for configuring report plugins.
+    # Used for reportportal, polarion, etc. Usually empty for most use cases.
     - name: TF_TMT_ENV
-      value: >
-        # Optional: override CMD/ARGS if the image needs a different entrypoint
-        # CONTAINER_CMD=""
-        # CONTAINER_ARGS=""
+      value: ""

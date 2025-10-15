@@ -47,10 +47,14 @@ spec:
       type: string
       default: "120"
       description: End-to-end TF timeout in minutes
+    - name: TF_TEST_ENV
+      type: string
+      default: ""
+      description: Space-separated K=V list passed to test environment
     - name: TF_TMT_ENV
       type: string
       default: ""
-      description: Space-separated K=V list passed to tmt as environment
+      description: Space-separated K=V list passed to tmt process for report plugins
 
   tasks:
     # ---- Task 1: extract image pullspec from SNAPSHOT ---------------------------
@@ -123,5 +127,7 @@ spec:
           value: $(params.TF_TIMEOUT_MIN)
         - name: IMAGE_REF
           value: $(tasks.extract-image-from-snapshot.results.image-url)
+        - name: TF_TEST_ENV
+          value: $(params.TF_TEST_ENV)
         - name: TF_TMT_ENV
           value: $(params.TF_TMT_ENV)
