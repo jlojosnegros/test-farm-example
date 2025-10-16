@@ -105,71 +105,6 @@ echo ">> Artifacts URL: $ARTIFACTS_URL"
 TEST_LOG_URL="${ARTIFACTS_URL}/results.xml"
 echo ">> Test Log URL placeholder: $TEST_LOG_URL"
 
-# Function to try fetching and parsing test logs from Testing Farm artifacts
-# Returns: successes failures summary_text (space-separated)
-try_parse_test_results() {
-  local req_id="$1"
-  local artifacts_base="https://artifacts.dev.testing-farm.io/${req_id}"
-
-  # Fetch results.xml which contains all artifact paths
-  echo ">> Fetching results.xml from artifacts..." >&2
-  local results_xml=$(curl -s -f "${artifacts_base}/results.xml" 2>/dev/null)
-
-  if [[ -z "${results_xml}" ]]; then
-    echo ">> Could not fetch results.xml from artifacts, using defaults" >&2
-    echo "0 0 "
-    return
-  fi
-
-  # Extract test log URL from results.xml
-  # Use two-step grep to handle any attribute order (href can be before or after name)
-  local log_url=$(echo "${results_xml}" | grep 'name="testout\.log"' | grep -oP 'href="\K[^"]+' | head -1 || echo "")
-
-  if [[ -z "${log_url}" ]]; then
-    echo ">> Could not find testout.log in results.xml, using defaults" >&2
-    echo "0 0 "
-    return
-  fi
-
-  echo ">> Found test log at: ${log_url}" >&2
-
-  # Download the actual log content
-  local log_content=$(curl -s -f "${log_url}" 2>/dev/null)
-
-  # If we couldn't download the log, return defaults
-  if [[ -z "${log_content}" ]]; then
-    echo ">> Could not download test log from ${log_url}, using defaults" >&2
-    echo "0 0 "
-    return
-  fi
-
-  # Parse FAILURE SUMMARY
-  local total_tests=0
-  local failures=0
-  local successes=0
-  local summary=""
-
-  if echo "${log_content}" | grep -q "FAILURE SUMMARY"; then
-    # Extract the summary section
-    summary=$(echo "${log_content}" | sed -n '/FAILURE SUMMARY/,/^========================================$/p')
-
-    # Parse "Total failures: X out of Y test binaries"
-    if [[ "${summary}" =~ Total\ failures:\ ([0-9]+)\ out\ of\ ([0-9]+) ]]; then
-      failures="${BASH_REMATCH[1]}"
-      total_tests="${BASH_REMATCH[2]}"
-      successes=$((total_tests - failures))
-    fi
-  else
-    # No FAILURE SUMMARY means all tests passed
-    # Try to count test binaries from the markers
-    total_tests=$(echo "${log_content}" | grep -c "^<=== .*OK$" || echo "0")
-    successes=${total_tests}
-    failures=0
-  fi
-
-  echo "${successes} ${failures} ${summary}"
-}
-
 echo ">> Waiting for completion (timeout: ${TF_TIMEOUT_MIN} min)"
 TIMEOUT_SECONDS=$(( ( ${TF_TIMEOUT_MIN} + 10 ) * 60 ))
 DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
@@ -229,35 +164,22 @@ while true; do
       echo ">> Could not fetch results.xml after $MAX_RETRIES_FINAL attempts, keeping placeholder"
     fi
 
-    # Try to parse test results from artifacts
-    read -r SUCCESSES FAILURES SUMMARY <<< "$(try_parse_test_results "$REQ_ID")"
-
-    # If we got real metrics, use them; otherwise use defaults
-    if [[ -z "${SUCCESSES}" ]] || [[ "${SUCCESSES}" == "0" && "${FAILURES}" == "0" ]]; then
-      # Fallback to simple counting based on overall result
-      if [[ "$RESULT" == "passed" ]]; then
-        SUCCESSES=1
-        FAILURES=0
-      else
-        SUCCESSES=0
-        FAILURES=1
-      fi
+    # Display link to complete log
+    echo ""
+    if [[ -n "${TEST_LOG_URL_FINAL}" ]]; then
+      echo ">> Complete test output available at:"
+      echo "   ${TEST_LOG_URL_FINAL}"
+    else
+      echo ">> Test artifacts available at: ${ARTIFACTS_URL}"
     fi
-
-    # Display summary if we got one
-    if [[ -n "${SUMMARY}" ]]; then
-      echo ""
-      echo ">> Detailed test summary:"
-      echo "${SUMMARY}"
-      echo ""
-    fi
+    echo ""
 
     if [[ "$RESULT" == "passed" ]]; then
-      echo ">> PASSED (${SUCCESSES} test binaries succeeded)"
+      echo ">> PASSED"
       echo ">> Test Log: ${TEST_LOG_URL}"
       exit 0
     else
-      echo ">> FAILED (${FAILURES} out of $((SUCCESSES + FAILURES)) test binaries failed)"
+      echo ">> FAILED"
       echo ">> Test Log: ${TEST_LOG_URL}"
       testing-farm list --id "$REQ_ID" --format text || true
       exit 1
