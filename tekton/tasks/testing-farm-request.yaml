@@ -172,6 +172,11 @@ spec:
         echo -n "${REQ_ID}" | tee "$(results.REQUEST_ID.path)"
         echo -n "${ARTIFACTS_URL}" | tee "$(results.ARTIFACTS_URL.path)"
 
+        # Write TEST_LOG_URL pointing to the test output log in artifacts
+        # This provides a direct link to the complete test log
+        TEST_LOG_URL="${ARTIFACTS_URL}/work-default-0/plan/execute/data/guest/default-0/tests/run-root-image-1/output.txt"
+        echo -n "${TEST_LOG_URL}" | tee "$(results.TEST_LOG_URL.path)"
+
         # Function to generate TEST_OUTPUT JSON
         generate_test_output() {
           local result="$1"
