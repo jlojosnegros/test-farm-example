@@ -101,9 +101,9 @@ echo ">> Request ID: $REQ_ID"
 echo ">> API URL: $API_URL"
 echo ">> Artifacts URL: $ARTIFACTS_URL"
 
-# Construct TEST_LOG_URL pointing to the test output log in artifacts
-TEST_LOG_URL="${ARTIFACTS_URL}/work-default-0/plan/execute/data/guest/default-0/tests/run-root-image-1/output.txt"
-echo ">> Test Log URL: $TEST_LOG_URL"
+# Declare TEST_LOG_URL placeholder (will be updated after test completion)
+TEST_LOG_URL="${ARTIFACTS_URL}/results.xml"
+echo ">> Test Log URL placeholder: $TEST_LOG_URL"
 
 # Function to try fetching and parsing test logs from Testing Farm artifacts
 # Returns: successes failures summary_text (space-separated)
@@ -111,25 +111,34 @@ try_parse_test_results() {
   local req_id="$1"
   local artifacts_base="https://artifacts.dev.testing-farm.io/${req_id}"
 
-  # Try to find and download the test output log
-  # Common paths in Testing Farm artifacts
-  local log_paths=(
-    "work-default-0/plan/execute/data/guest/default-0/tests/run-root-image-1/output.txt"
-    "work-default/plan/execute/data/guest/default-0/tests/run-root-image-1/output.txt"
-  )
+  # Fetch results.xml which contains all artifact paths
+  echo ">> Fetching results.xml from artifacts..." >&2
+  local results_xml=$(curl -s -f "${artifacts_base}/results.xml" 2>/dev/null)
 
-  local log_content=""
-  for path in "${log_paths[@]}"; do
-    local url="${artifacts_base}/${path}"
-    if log_content=$(curl -s -f "${url}" 2>/dev/null); then
-      echo ">> Found test log at: ${url}" >&2
-      break
-    fi
-  done
+  if [[ -z "${results_xml}" ]]; then
+    echo ">> Could not fetch results.xml from artifacts, using defaults" >&2
+    echo "0 0 "
+    return
+  fi
 
-  # If we couldn't find the log, return defaults
+  # Extract test log URL from results.xml
+  # Use two-step grep to handle any attribute order (href can be before or after name)
+  local log_url=$(echo "${results_xml}" | grep 'name="testout\.log"' | grep -oP 'href="\K[^"]+' | head -1 || echo "")
+
+  if [[ -z "${log_url}" ]]; then
+    echo ">> Could not find testout.log in results.xml, using defaults" >&2
+    echo "0 0 "
+    return
+  fi
+
+  echo ">> Found test log at: ${log_url}" >&2
+
+  # Download the actual log content
+  local log_content=$(curl -s -f "${log_url}" 2>/dev/null)
+
+  # If we couldn't download the log, return defaults
   if [[ -z "${log_content}" ]]; then
-    echo ">> Could not fetch test logs from artifacts, using defaults" >&2
+    echo ">> Could not download test log from ${log_url}, using defaults" >&2
     echo "0 0 "
     return
   fi
@@ -176,6 +185,49 @@ while true; do
   # Check if request reached a terminal state
   if [[ "$STATE" == "complete" ]]; then
     echo ">> Test completed, attempting to fetch detailed results..."
+
+    # Extract TEST_LOG_URL from results.xml now that test is complete
+    # Use retry logic to handle race conditions and network issues
+    echo ">> Extracting test log URL from results.xml..."
+    MAX_RETRIES_FINAL=5
+    RETRY_DELAY_FINAL=2
+    RESULTS_XML_FINAL=""
+
+    for attempt in $(seq 1 $MAX_RETRIES_FINAL); do
+      echo ">> Attempt $attempt/$MAX_RETRIES_FINAL to fetch results.xml after completion..."
+      RESULTS_XML_FINAL=$(curl -s -f "${ARTIFACTS_URL}/results.xml" 2>/dev/null || echo "")
+
+      if [[ -n "${RESULTS_XML_FINAL}" ]]; then
+        echo ">> results.xml fetched successfully after completion"
+
+        # Save results.xml to local disk for debugging
+        RESULTS_XML_FILE="results-${REQ_ID}.xml"
+        echo "${RESULTS_XML_FINAL}" > "${RESULTS_XML_FILE}"
+        echo ">> Saved results.xml to: ${RESULTS_XML_FILE}"
+
+        break
+      fi
+
+      if [[ $attempt -lt $MAX_RETRIES_FINAL ]]; then
+        echo ">> results.xml not yet available, waiting ${RETRY_DELAY_FINAL}s before retry..."
+        sleep $RETRY_DELAY_FINAL
+      fi
+    done
+
+    if [[ -n "${RESULTS_XML_FINAL}" ]]; then
+      # Extract URL in two steps to handle any attribute order
+      # Step 1: Find the line with name="testout.log"
+      # Step 2: Extract href value from that line
+      TEST_LOG_URL_FINAL=$(echo "${RESULTS_XML_FINAL}" | grep 'name="testout\.log"' | grep -oP 'href="\K[^"]+' | head -1 || echo "")
+      if [[ -n "${TEST_LOG_URL_FINAL}" ]]; then
+        echo ">> Test log URL found: ${TEST_LOG_URL_FINAL}"
+        TEST_LOG_URL="${TEST_LOG_URL_FINAL}"
+      else
+        echo ">> Could not extract test log URL from results.xml, keeping placeholder"
+      fi
+    else
+      echo ">> Could not fetch results.xml after $MAX_RETRIES_FINAL attempts, keeping placeholder"
+    fi
 
     # Try to parse test results from artifacts
     read -r SUCCESSES FAILURES SUMMARY <<< "$(try_parse_test_results "$REQ_ID")"
