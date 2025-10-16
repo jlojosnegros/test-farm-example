@@ -1,6 +1,29 @@
 ---
-# Minimal Tekton Pipeline that delegates to a single Task which
-# submits a request to Testing Farm, then waits and fails/passes accordingly.
+# Tekton Pipeline for Konflux Integration Testing with Testing Farm
+#
+# This pipeline integrates Konflux builds with Testing Farm to validate container images.
+#
+# WORKFLOW:
+#   1. Extract container image pullspec from Konflux SNAPSHOT JSON
+#   2. Submit Testing Farm request to run the image in privileged mode
+#   3. Poll Testing Farm for test completion
+#   4. Return results to Konflux UI (pass/fail with artifacts)
+#
+# USAGE:
+#   This pipeline is typically referenced by an IntegrationTestScenario in Konflux.
+#   Konflux automatically provides the SNAPSHOT parameter with build information.
+#
+# TASKS:
+#   - extract-image-from-snapshot: Parses SNAPSHOT JSON using jq to find component image
+#   - run-testing-farm: Submits test request via tf-request-root-image.yaml task
+#
+# RESULTS:
+#   Results from run-testing-farm task are propagated to Konflux UI:
+#   - TEST_OUTPUT: JSON with test result (SUCCESS/FAILURE/ERROR)
+#   - ARTIFACTS_URL: Link to Testing Farm artifacts browser
+#   - REQUEST_ID: Testing Farm request UUID
+#   - TEST_SUMMARY: Human-readable summary with log link
+#   - TEST_LOG_URL: Direct link to complete test output
 
 apiVersion: tekton.dev/v1
 kind: Pipeline
@@ -8,74 +31,107 @@ metadata:
   name: testing-farm-pipeline
 spec:
   description: >
-    Use the Konflux-provided SNAPSHOT to find the component image, then ask
-    Testing Farm to run that image (CMD/ENTRYPOINT) in a privileged container.
+    Extract container image from Konflux SNAPSHOT and run on Testing Farm. 
+    Tests execute the image in privileged mode and report results back to Konflux.
   params:
-    # Provided automatically by Konflux Integration service (JSON string).
+    # Konflux-specific parameters
     - name: SNAPSHOT
       type: string
-      description: Konflux Snapshot JSON (provided automatically)
-    # Your component name inside the snapshot (to pick the right image)
+      description: >
+        Konflux Snapshot JSON containing build information (provided automatically by Konflux).
+        Contains component names and their corresponding container image pullspecs.
     - name: COMPONENT_NAME
       type: string
-      description: Name of the component inside the snapshot
-    # Testing Farm params
+      description: >
+        Name of the component to extract from SNAPSHOT.
+        Must match a component name in the Konflux application.
+
+    # Testing Farm configuration parameters
     - name: TF_COMPOSE
       type: string
-      default: RHEL-9
-      description: Testing Farm compose (e.g. Fedora-41, RHEL-9.4)
+      default: Fedora-42
+      description: >
+        Testing Farm compose/OS to provision for testing
     - name: TF_ARCH
       type: string
       default: x86_64
-      description: Target architecture
+      description: >
+        Target architecture for testing
     - name: TF_GIT_URL
       type: string
-      description: Git repo URL containing tmt tests/plans
+      description: >
+        Git repository URL containing FMF/tmt test metadata.
+        This is where Testing Farm will find your test plans and scripts.
     - name: TF_GIT_REF
       type: string
       default: main
-      description: Branch/commit/SHA for tmt tests
+      description: >
+        Git branch, tag, or commit SHA to checkout for tests.
     - name: TF_PATH
       type: string
       default: "."
-      description: Path to tmt metadata tree root (relative to git repo root)
+      description: >
+        Path to tmt metadata tree root relative to git repo root.
+        Set it to where your .fmf/ directory is.
     - name: TF_PLAN
       type: string
       default: /plans/run-root-image
-      description: FMF path to the tmt plan (e.g. /plans/run-root-script)
+      description: >
+        FMF plan path to execute 
     - name: TF_TIMEOUT_MIN
       type: string
       default: "120"
-      description: End-to-end TF timeout in minutes
+      description: >
+        Maximum time in minutes to wait for test completion.
+        Includes provisioning, test execution, and result collection.
     - name: TF_TEST_ENV
       type: string
       default: ""
-      description: Space-separated K=V list passed to test environment
+      description: >
+        Environment variables to pass to test scripts, space-separated K=V pairs
+        (e.g., "VAR1=value1 VAR2=value2"). Available to test scripts via environment.
     - name: TF_TMT_ENV
       type: string
       default: ""
-      description: Space-separated K=V list passed to tmt process for report plugins
+      description: >
+        Environment variables for tmt process configuration (report plugins),
+        space-separated K=V pairs. Used for reportportal, polarion, etc.
+
+    # Container registry authentication (optional)
     - name: REGISTRY_USER
       type: string
       default: ""
-      description: Username for private container registry (optional)
+      description: >
+        Username for authenticating to private container registries.
+        Leave empty for public images. For Quay.io, use robot account format: namespace+robotname
     - name: REGISTRY_PASSWORD
       type: string
       default: ""
-      description: Password or token for private container registry (optional)
+      description: >
+        Password or token for authenticating to private container registries.
+        Leave empty for public images. For Quay.io, use robot account token.
 
   tasks:
-    # ---- Task 1: extract image pullspec from SNAPSHOT ---------------------------
+    # =========================================================================
+    # Task 1: Extract Container Image from Konflux SNAPSHOT
+    # =========================================================================
+    # Parses the SNAPSHOT JSON (provided by Konflux) to find the container
+    # image pullspec for the specified component. Uses jq to navigate the
+    # JSON structure and handles both .spec.components and .components paths
+    # for compatibility with different Konflux versions.
+    # =========================================================================
     - name: extract-image-from-snapshot
       taskSpec:
         params:
           - name: SNAPSHOT
             type: string
+            description: Konflux Snapshot JSON containing component build information
           - name: COMPONENT_NAME
             type: string
+            description: Name of the component to find in the snapshot
         results:
           - name: image-url
-            description: Container image pullspec for the selected component
+            description: Extracted container image pullspec (e.g., quay.io/user/image@sha256:...)
         steps:
           - name: find-component-image
             image: quay.io/konflux-ci/konflux-test:stable
@@ -106,18 +162,26 @@ spec:
               echo "Found image: ${COMPONENT_IMAGE}"
               echo -n "${COMPONENT_IMAGE}" > "$(results.image-url.path)"
 
-    # ---- Task 2: run Testing Farm sending ------
+    # =========================================================================
+    # Task 2: Submit Testing Farm Request and Wait for Results
+    # =========================================================================
+    # References the tf-request-root-image.yaml task via git resolver.
+    # This task submits a Testing Farm request with the extracted image,
+    # polls for completion, and returns results to Konflux.
+    #
+    # IMPORTANT: Update the git resolver URL below to point to your repository.
+    # =========================================================================
     - name: run-testing-farm
       runAfter: [extract-image-from-snapshot]
       taskRef:
         resolver: git
         params:
           - name: url
-            value: https://github.com/yomismo/repo.git
+            value: https://github.com/yomismo/repo.git # TODO: Replace with your repository URL
           - name: revision
-            value: main
+            value: main # Git branch/tag/commit to reference for the task YAML
           - name: pathInRepo
-            value: tekton/tasks/testing-farm-request.yaml
+            value: tekton/tasks/tf-request-root-image.yaml # Path to the task definition
       params:
         - name: TF_COMPOSE
           value: $(params.TF_COMPOSE)
