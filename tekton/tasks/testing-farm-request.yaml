@@ -1,8 +1,27 @@
 ---
-# Tekton Task that:
-#  1) Uses quay.io/testing-farm/cli to submit a request referencing your Git repo + tmt plan.
-#  2) Polls Testing Farm for completion (pass/fail) within a timeout.
-#  3) Exits non-zero to fail the pipeline on test failure/timeouts.
+# Tekton Task for Testing Farm Integration
+#
+# This task submits a Testing Farm request to run integration tests and polls for results.
+#
+# WORKFLOW:
+#   1. Submits a Testing Farm request using the CLI (quay.io/testing-farm/cli)
+#   2. References a Git repository containing FMF/tmt test metadata
+#   3. Polls Testing Farm API every 30s for test completion
+#   4. Extracts test log URLs from Testing Farm artifacts
+#   5. Generates Tekton results (TEST_OUTPUT, ARTIFACTS_URL, REQUEST_ID, etc.)
+#   6. Exits with appropriate code based on test outcome
+#
+# EXIT CODES:
+#   0 - Tests passed successfully
+#   1 - Tests failed
+#   2 - Infrastructure error
+#   3 - Request was canceled
+#   4 - Timeout exceeded
+#
+# REQUIRED SECRETS:
+#   testing-farm-api-token: Kubernetes Secret containing Testing Farm API token
+#                          Create with: kubectl create secret generic testing-farm-api-token \
+#                                        --from-literal=token='YOUR_TOKEN'
 
 apiVersion: tekton.dev/v1
 kind: Task
@@ -17,55 +36,61 @@ spec:
     - name: TF_COMPOSE
       type: string
       default: RHEL-9
+      description: Testing Farm compose/OS to provision (e.g., RHEL-9, Fedora-42, CentOS-Stream-9)
     - name: TF_ARCH
       type: string
       default: x86_64
+      description: Architecture to test on (e.g., x86_64, aarch64, ppc64le, s390x)
     - name: TF_GIT_URL
       type: string
+      description: Git repository URL containing FMF/tmt test metadata
     - name: TF_GIT_REF
       type: string
       default: main
+      description: Git branch, tag, or commit SHA to checkout
     - name: TF_PATH
       type: string
       default: "."
-      description: Path to tmt metadata tree root (relative to git repo root)
+      description: Path to tmt metadata tree root (relative to git repo root, set to 'tekton' if .fmf/ is in subdirectory)
     - name: TF_PLAN
       type: string
       default: /plans/run-root-image
+      description: FMF test plan path to execute (e.g., /plans/run-root-image, /plans/run-root-script)
     - name: TF_TIMEOUT_MIN
       type: string
       default: "120"
+      description: Test timeout in minutes (how long to wait for test completion)
     - name: TF_TEST_ENV
       type: string
       default: ""
-      description: Variables to pass to test environment (space-separated K=V pairs)
+      description: Environment variables for test scripts, space-separated K=V pairs (e.g., "VAR1=value1 VAR2=value2")
     - name: TF_TMT_ENV
       type: string
       default: ""
-      description: Variables to pass to tmt process for report plugins (space-separated K=V pairs)
+      description: Environment variables for tmt process configuration (report plugins like reportportal/polarion), space-separated K=V pairs
     - name: IMAGE_REF
       type: string
-      description: Container image pullspec to run on Testing Farm VM
+      description: Container image pullspec to test (e.g., quay.io/user/image:tag or docker.io/library/nginx:latest)
     - name: REGISTRY_USER
       type: string
       default: ""
-      description: Username for private container registry (optional)
+      description: Username for authenticating to private container registries (optional, leave empty for public images)
     - name: REGISTRY_PASSWORD
       type: string
       default: ""
-      description: Password or token for private container registry (optional)
+      description: Password or token for authenticating to private container registries (optional, leave empty for public images)
 
   results:
     - name: TEST_OUTPUT
-      description: Tekton task test output in JSON format with detailed per-binary metrics
+      description: JSON-formatted test result for Konflux UI (contains result, timestamp, note fields)
     - name: ARTIFACTS_URL
-      description: URL to Testing Farm artifacts
+      description: URL to Testing Farm artifacts browser for this test run
     - name: REQUEST_ID
-      description: Testing Farm request ID for debugging
+      description: Testing Farm request UUID for API queries and debugging
     - name: TEST_SUMMARY
-      description: Detailed test summary with per-binary breakdown and failed test names
+      description: Human-readable test summary with link to complete test output log
     - name: TEST_LOG_URL
-      description: Direct URL to the complete test output log
+      description: Direct URL to the complete test output log (testout.log from Testing Farm artifacts)
 
   steps:
     - name: request-and-wait

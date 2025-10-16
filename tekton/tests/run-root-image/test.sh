@@ -1,4 +1,32 @@
 #!/usr/bin/env bash
+#
+# Test script for running container images in privileged mode on Testing Farm VM.
+#
+# This script pulls and runs a container image using podman with --privileged flag.
+# The container's exit code determines the test result (0=pass, non-zero=fail).
+#
+# REQUIRED ENVIRONMENT VARIABLES:
+#   IMAGE_REF         Container image pullspec (e.g., quay.io/user/image:tag)
+#                     Provided by Tekton via --environment flag to Testing Farm
+#
+# OPTIONAL ENVIRONMENT VARIABLES:
+#   REGISTRY_USER     Username for private container registry authentication
+#   REGISTRY_PASSWORD Password/token for private container registry authentication
+#   CONTAINER_CMD     Override the container's default CMD/ENTRYPOINT
+#   CONTAINER_ARGS    Additional arguments to pass to CONTAINER_CMD
+#
+# BEHAVIOR:
+#   1. Validates podman is installed
+#   2. Authenticates to registry if credentials are provided
+#   3. Runs the container with --rm --privileged flags
+#   4. Exits with the container's exit code (determines test pass/fail)
+#
+# EXIT CODES:
+#   0   Container executed successfully (test passed)
+#   1   Container failed (test failed)
+#   2   Infrastructure error (podman not found, registry login failed, etc.)
+#   N   Any other exit code from the container
+#
 set -euo pipefail
 
 : "${IMAGE_REF:?IMAGE_REF is required (provided by Tekton via TF_TMT_ENV)}"
