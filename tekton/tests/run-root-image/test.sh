@@ -28,29 +28,16 @@ fi
 
 RUN=(podman run --rm --privileged)
 
-# Capture output to both stdout and a file for analysis
-OUTPUT_FILE="/tmp/container-output.log"
-
+# Run the container and capture its exit code
+# Output goes directly to stdout/stderr (captured by Testing Farm as output.txt)
 if [[ -n "${CONTAINER_CMD}" ]]; then
   echo "==> Overriding image command"
-  "${RUN[@]}" "${IMAGE_REF}" /bin/bash -lc "${CONTAINER_CMD} ${CONTAINER_ARGS}" 2>&1 | tee "${OUTPUT_FILE}"
-  EXIT_CODE=${PIPESTATUS[0]}
+  "${RUN[@]}" "${IMAGE_REF}" /bin/bash -lc "${CONTAINER_CMD} ${CONTAINER_ARGS}"
+  EXIT_CODE=$?
 else
   echo "==> Running image with its default CMD/ENTRYPOINT"
-  "${RUN[@]}" "${IMAGE_REF}" 2>&1 | tee "${OUTPUT_FILE}"
-  EXIT_CODE=${PIPESTATUS[0]}
-fi
-
-# Extract and display failure summary if it exists
-if grep -q "FAILURE SUMMARY" "${OUTPUT_FILE}"; then
-  echo ""
-  echo "========================================="
-  echo "EXTRACTED TEST RESULTS SUMMARY"
-  echo "========================================="
-  # Extract from FAILURE SUMMARY to the end, but stop at "Shared connection" or end of file
-  sed -n '/FAILURE SUMMARY/,/^========================================$/p' "${OUTPUT_FILE}" | head -20
-  echo "========================================="
-  echo ""
+  "${RUN[@]}" "${IMAGE_REF}"
+  EXIT_CODE=$?
 fi
 
 # Exit with the container's exit code
