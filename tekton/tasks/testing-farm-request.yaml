@@ -186,8 +186,7 @@ spec:
         {
           "result": "${result}",
           "timestamp": "${timestamp}",
-          "note": "${note}",
-          "namespace": "testing-farm"
+          "note": "${note}"
         }
         EOF
         }
